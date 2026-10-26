@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "foundations/sorting/selection-sort",
+    "foundations/sorting/merge-sort",
+    "foundations/sorting/quick-sort",
+    "foundations/dynamic-programming-basics/change-problem",
+    "foundations/dynamic-programming-basics/manhattan-tourist",
+    "foundations/dynamic-programming-basics/edit-distance",
+    "foundations/dynamic-programming-basics/longest-common-subsequence",
+    "foundations/greedy-basics/interval-scheduling",
+    "foundations/greedy-basics/fractional-knapsack",
+    "foundations/greedy-basics/huffman-coding",
+]
