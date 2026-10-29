@@ -397,3 +397,10 @@ EM-based quantification provides critical foundation for downstream genomic anal
 - **Probabilistic Allocation:** Ambiguous reads are distributed as fractional expected counts based on current abundance parameter estimates.
 - **Length Normalization:** Fragment counts must be adjusted by effective transcript length ($\ell^{\text{eff}}$) to calculate accurate molar abundances (TPM).
 - **Efficiency via Equivalence Classes:** Modern quantifiers (Salmon, kallisto, RSEM, oarfish) aggregate reads into equivalence classes to perform EM iterations efficiently in memory.
+
+## References
+
+1. Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). *Maximum likelihood from incomplete data via the EM algorithm*. Journal of the Royal Statistical Society: Series B, 39(1), 1–38.
+2. Li, B., Ruotti, V., Stewart, R. M., Thomson, J. A., & Dewey, C. N. (2010). *RNA-Seq gene expression estimation with read mapping uncertainty*. Bioinformatics, 26(4), 493–500.
+3. Patro, R., Duggal, G., Love, M. I., Irizarry, R. A., & Kingsford, C. (2017). *Salmon provides fast and bias-aware quantification of transcript expression*. Nature Methods, 14, 417–419.
+4. Bray, N. L., Pimentel, H., Melsted, P., & Pachter, L. (2016). *Near-optimal probabilistic RNA-seq quantification*. Nature Biotechnology, 34, 525–527.

@@ -329,3 +329,8 @@ While *pseudoalignment* and *quasi-mapping* are both lightweight mapping paradig
 * **Equivalence Classes:** Groups reads with identical compatibility patterns, vastly reducing data volume prior to abundance estimation.
 * **Separation of Concerns:** Pseudoalignment identifies compatibility; probabilistic frameworks (EM/VB) infer abundance.
 * **Tool Ecosystem:** `kallisto` uses graph-based pseudoalignment, whereas `Salmon` uses quasi-mapping/selective alignment with mapping-position tracking.
+
+## References
+
+1. Bray, N. L., Pimentel, H., Melsted, P., & Pachter, L. (2016). *Near-optimal probabilistic RNA-seq quantification*. Nature Biotechnology, 34, 525–527.
+2. Patro, R., Duggal, G., Love, M. I., Irizarry, R. A., & Kingsford, C. (2017). *Salmon provides fast and bias-aware quantification of transcript expression*. Nature Methods, 14, 417–419.
