@@ -1,14 +1,42 @@
 # Expectation-Maximization for Transcript Quantification
 
+A comprehensive guide to understanding and applying the Expectation-Maximization (EM) algorithm for RNA-seq transcript isoform quantification.
+
+---
+
+## Table of Contents
+
+1. [What Is Expectation-Maximization?](#1-what-is-expectation-maximization)
+2. [Why Is Transcript Quantification Difficult?](#2-why-is-transcript-quantification-difficult)
+3. [Understanding EM with a Simple Analogy](#3-understanding-em-with-a-simple-analogy)
+4. [The Mathematics Behind EM](#4-the-mathematics-behind-em)
+   - [4.1 The Likelihood Function](#41-the-likelihood-function)
+   - [4.2 E-step: Calculate Read Assignment Probabilities](#42-e-step-calculate-read-assignment-probabilities)
+   - [4.3 M-step: Update Transcript Abundances](#43-m-step-update-transcript-abundances)
+5. [Worked Example: Quantifying Four TP53 Isoforms](#5-worked-example-quantifying-four-tp53-isoforms)
+6. [Transcript Abundance Is Not the Same as Read Count](#6-transcript-abundance-is-not-the-same-as-read-count)
+7. [Computational Complexity](#7-computational-complexity)
+8. [EM in Modern RNA-seq Quantification Tools](#8-em-in-modern-rna-seq-quantification-tools)
+9. [Limitations of EM-Based Transcript Quantification](#9-limitations-of-em-based-transcript-quantification)
+10. [Why This Matters in Bioinformatics](#10-why-this-matters-in-bioinformatics)
+- [Key Takeaways](#key-takeaways)
+
+---
+
 ## 1. What Is Expectation-Maximization?
 
-**Expectation-Maximization (EM)** is an iterative statistical algorithm used to estimate unknown parameters when some of the underlying data assignments are uncertain or hidden.
+**Expectation-Maximization (EM)** is an iterative statistical algorithm used to estimate unknown parameters when some of the underlying data assignments are uncertain or hidden (latent variables).
 
-In RNA-seq analysis, EM can help estimate the abundance of different transcripts when sequencing reads cannot be uniquely assigned to a single transcript.
+In RNA-seq analysis, EM helps estimate the relative abundance of different transcript isoforms when sequencing reads cannot be uniquely assigned to a single transcript.
 
-A gene may produce multiple transcript isoforms through alternative splicing, alternative transcription start sites, or alternative polyadenylation. These isoforms can share many exons, meaning that a short sequencing read may be compatible with several transcripts.
+A single gene may produce multiple transcript isoforms through:
+- **Alternative splicing**
+- **Alternative transcription start sites (TSS)**
+- **Alternative polyadenylation (APA)**
 
-For example, consider three transcript isoforms:
+Because these isoforms often share identical exon sequences, short sequencing reads frequently match multiple transcripts.
+
+### Example Isoform Structure
 
 ```text
 Transcript A: [Exon 1] ── [Exon 2] ── [Exon 3]
@@ -16,48 +44,53 @@ Transcript B: [Exon 1] ───────────── [Exon 3]
 Transcript C: [Exon 1] ── [Exon 2] ── [Exon 4]
 ```
 
-A read originating from Exon 1 may be compatible with all three transcripts. However, a read spanning the Exon 2–Exon 3 junction may distinguish Transcript A from the other isoforms.
+- A read originating entirely within **Exon 1** is compatible with all three transcripts.
+- A read spanning the **Exon 2–Exon 3** junction distinguishes **Transcript A** from Transcript B and Transcript C.
 
-This creates two broad categories of reads:
+This introduces two fundamental categories of reads:
 
-- **Uniquely compatible reads:** Reads that support one transcript under the quantification model.
-- **Ambiguously compatible reads:** Reads that are compatible with multiple transcripts.
+| Read Category | Description |
+| :--- | :--- |
+| **Uniquely Compatible Reads** | Reads that map to only one transcript under the given model. |
+| **Ambiguously Compatible Reads** | Reads that map to multiple candidate transcripts. |
 
-The EM algorithm uses the observed reads, their transcript compatibility, and estimated transcript abundances to infer how likely each transcript is to have generated each read.
+The EM algorithm leverages observed reads, transcript compatibility mappings, and current abundance estimates to infer how likely each transcript was to have generated each read.
 
-Instead of permanently assigning every ambiguous read to one transcript, EM distributes its contribution probabilistically and repeatedly updates the abundance estimates.
-
-**Important:** EM does not recover the true origin of every individual read with certainty. It estimates transcript abundances from the available evidence.
+> **Important:** EM does not permanently assign an ambiguous read to a single transcript, nor does it recover the true physical origin of every read with certainty. Instead, it distributes read contributions probabilistically to estimate overall transcript abundances from available evidence.
 
 ---
 
 ## 2. Why Is Transcript Quantification Difficult?
 
-Suppose a gene has two transcript isoforms:
+Consider a simple gene with two transcript isoforms:
 
 ```text
 Transcript A: ATGCCAGT
 Transcript B: ATGCTAGT
 ```
 
-Most of their sequences are identical. A short read from a shared region may map equally well to both transcripts.
-
-Consider these hypothetical RNA-seq reads:
+Because most of their sequence is identical, short reads from shared regions map equally well to both:
 
 ```text
-Read 1: ATG
-Read 2: GCC
-Read 3: CAG
-Read 4: CTA
+Read 1: ATG  --> Maps to Transcript A, Transcript B
+Read 2: GCC  --> Maps to Transcript A
+Read 3: CAG  --> Maps to Transcript A, Transcript B
+Read 4: CTA  --> Maps to Transcript B
 ```
 
-Depending on the read positions and the transcript sequences, some reads may support both isoforms, while others may distinguish them.
+### Potential Quantification Pitfalls
 
-If every ambiguous read is assigned equally to every compatible transcript, the estimated abundances can be misleading. If every read is assigned randomly, the result can vary between runs and introduce unnecessary noise.
+1. **Equal Division:** Dividing ambiguous reads equally across all compatible transcripts skews abundance estimates toward shared regions regardless of true expression levels.
+2. **Random Assignment:** Assigning ambiguous reads randomly introduces unnecessary variance and non-reproducible noise between runs.
+3. **Discarding Ambiguous Reads:** Throwing away ambiguous reads loses significant sequencing data and severely biases estimates against highly conserved regions.
 
-EM offers a principled alternative: assign each read a probability of originating from each compatible transcript, then use those assignments to update the abundance estimates.
+EM offers a mathematically principled alternative: it assigns each read a **probability** of originating from each compatible transcript, using those probabilities to iteratively update abundance estimates.
 
-In practice, transcript quantifiers also consider factors such as effective transcript length, fragment-length distributions, sequencing biases, and alignment or compatibility scores.
+In real-world workflows, transcript quantifiers also model factors such as:
+- **Effective transcript length**
+- **Fragment-length distributions**
+- **Sequencing biases** (GC content, positional bias)
+- **Alignment quality and compatibility scores**
 
 ---
 
@@ -65,496 +98,302 @@ In practice, transcript quantifiers also consider factors such as effective tran
 
 Imagine three cookie jars representing three transcript isoforms and a collection of cookies representing sequencing reads.
 
-Some cookies have labels identifying the jar they came from. Others have ambiguous labels and could have come from multiple jars.
+- Some cookies have distinct labels identifying their exact jar.
+- Other cookies have ambiguous labels and could have come from multiple jars.
 
-The goal is to estimate how many cookies came from each jar.
+The goal is to estimate the total fraction of cookies produced by each jar.
+
+```
+       =================================================
+       |                EM Iteration Loop              |
+       =================================================
+                               |
+                               v
+               +-------------------------------+
+               |    Initialize Abundances      |
+               | (e.g., A: 33.3%, B/C: 33.3%)  |
+               +-------------------------------+
+                               |
+                               v
+               +-------------------------------+
+               |            E-step             |
+               | Estimate assignment probabilities |
+               |   for all ambiguous reads     |
+               +-------------------------------+
+                               |
+                               v
+               +-------------------------------+
+               |            M-step             |
+               | Recalculate abundance estimates|
+               |  from total expected counts   |
+               +-------------------------------+
+                               |
+                               v
+                     /-------------------\
+                    /   Has the model     \
+                   <     converged?        >
+                    \  (Threshold met?)   /
+                     \-------------------/
+                       /               \
+                 No   /                 \   Yes
+                     /                   \
+      +---------------------+     +--------------------+
+      | Repeat E-M Cycle    |     | Return Final       |
+      |  (Loop back)        |     | Abundance Estimates|
+      +---------------------+     +--------------------+
+```
 
 ### Step 1: Initialize
+Start with an initial estimate of the abundance of each transcript. For instance, equal proportions:
+$$\theta_A = 33.3\%, \quad \theta_B = 33.3\%, \quad \theta_C = 33.3\%$$
 
-Start with an initial estimate of the abundance of each transcript.
+*(Note: Real implementations may initialize using unique read counts or uniform distributions).*
 
-For example:
+### Step 2: E-step (Expectation)
+For each ambiguous read, calculate the probability that it originated from each compatible transcript. If Transcript A is currently estimated to be twice as abundant as Transcript B, an ambiguous read compatible with both will assign a larger expected contribution to Transcript A.
 
-```text
-Transcript A: 33.3%
-Transcript B: 33.3%
-Transcript C: 33.3%
-```
-
-Equal initialization is a simple illustration. Actual implementations may use other initialization strategies.
-
-### Step 2: E-step — Expectation
-
-For each ambiguous read, estimate the probability that it originated from each compatible transcript.
-
-If Transcript A is estimated to be more abundant than Transcript B, and both are equally likely to generate the observed read apart from abundance, the read receives a larger expected contribution from Transcript A.
-
-### Step 3: M-step — Maximization
-
-Use the expected assignments of all reads to update the transcript abundance estimates.
-
-Uniquely compatible reads contribute to their compatible transcripts. Ambiguous reads contribute fractional expected counts to the transcripts that could have generated them.
+### Step 3: M-step (Maximization)
+Re-estimate transcript abundances using the expected assignments from the E-step.
+- **Unique reads** contribute full counts to their single transcript.
+- **Ambiguous reads** contribute fractional expected counts across compatible transcripts.
 
 ### Step 4: Repeat
-
-Repeat the E-step and M-step until the abundance estimates or likelihood change by less than a specified convergence threshold, or until a maximum iteration count is reached.
-
-```text
-Initialize transcript abundances
-             |
-             v
-    E-step: assign reads
-    probabilistically
-             |
-             v
-    M-step: update transcript
-    abundance estimates
-             |
-             v
-    Has the model converged?
-          /       \
-        No         Yes
-        |           |
-        +-----------+
-        Repeat      Return estimates
-```
-
-The final result is a set of estimated transcript abundances, not necessarily a definitive assignment of each read to one transcript.
+Iterate the E-step and M-step until the estimates or log-likelihood stabilize (change falls below a specified convergence threshold $\epsilon$) or a maximum iteration limit is reached.
 
 ---
 
 ## 4. The Mathematics Behind EM
 
+### Parameters and Notation
+
 Let:
+- $N$ = total number of observed reads or fragments.
+- $M$ = total number of candidate transcripts.
+- $r_n$ = the $n$-th observed read ($n = 1, \dots, N$).
+- $\theta_i$ = relative abundance of transcript $i$ ($\sum_{i=1}^{M}\theta_i = 1, \theta_i \ge 0$).
+- $p(r_n \mid i)$ = likelihood of observing read $r_n$ given it came from transcript $i$.
 
-- \(N\) = number of observed reads or fragments.
-- \(M\) = number of candidate transcripts.
-- \(r_n\) = the \(n\)-th observed read or fragment.
-- \(\theta_i\) = the relative abundance of transcript \(i\).
-- \(p(r_n \mid i)\) = the probability of observing read \(r_n\) if it originated from transcript \(i\).
+The mixture model assumes each read originates from exactly one candidate transcript, but the true generating transcript is an unobserved latent variable.
 
-For the simplified mixture model, transcript proportions satisfy:
+---
 
-\[
-\theta_i \geq 0
-\]
+### 4.1 The Likelihood Function
 
-and
+The probability of observing a single read $r_n$ is the marginal probability across all candidate transcripts:
 
-\[
-\sum_{i=1}^{M}\theta_i=1
-\]
+$$P(r_n \mid \theta) = \sum_{i=1}^{M} \theta_i \, p(r_n \mid i)$$
 
-The model assumes that each read originates from one of the candidate transcripts, but its exact source is not directly observed.
+Assuming reads are conditionally independent given $\theta$, the total likelihood over all $N$ reads is:
 
-### 4.1 The likelihood function
+$$L(\theta) = \prod_{n=1}^{N} \left[ \sum_{i=1}^{M} \theta_i \, p(r_n \mid i) \right]$$
 
-The probability of observing a read is the sum of its probabilities under all candidate transcripts, weighted by their abundance estimates:
+In practice, we maximize the **log-likelihood** $\ell(\theta)$ to convert products to sums:
 
-\[
-P(r_n\mid\theta)
-=
-\sum_{i=1}^{M}
-\theta_i p(r_n\mid i)
-\]
+$$\ell(\theta) = \sum_{n=1}^{N} \log \left[ \sum_{i=1}^{M} \theta_i \, p(r_n \mid i) \right]$$
 
-Assuming reads are conditionally independent under the model, the likelihood is:
+---
 
-\[
-L(\theta)
-=
-\prod_{n=1}^{N}
-\left[
-\sum_{i=1}^{M}
-\theta_i p(r_n\mid i)
-\right]
-\]
+### 4.2 E-step: Calculate Read Assignment Probabilities
 
-It is generally more convenient to maximize the log-likelihood:
+Let $z_{ni}$ represent the posterior probability that read $r_n$ originated from transcript $i$, given current parameter estimates $\theta$:
 
-\[
-\ell(\theta)
-=
-\sum_{n=1}^{N}
-\log
-\left[
-\sum_{i=1}^{M}
-\theta_i p(r_n\mid i)
-\right]
-\]
+$$z_{ni} = \frac{\theta_i \, p(r_n \mid i)}{\sum_{j=1}^{M} \theta_j \, p(r_n \mid j)}$$
 
-The EM algorithm iteratively improves this likelihood under the specified model.
+> **Property:** If transcript $i$ cannot physically produce read $r_n$, then $p(r_n \mid i) = 0$, leading directly to $z_{ni} = 0$.
 
-### 4.2 E-step: Calculate read assignment probabilities
+#### Simplification for Equal Read Likelihoods
+When candidate transcripts explain a read equally well ($p(r_n \mid A) = p(r_n \mid B)$), the formula simplifies to relative transcript abundance:
 
-Let \(z_{ni}\) denote the probability that read \(n\) originated from transcript \(i\), given the current abundance estimates.
+$$z_{nA} = \frac{\theta_A}{\theta_A + \theta_B}, \qquad z_{nB} = \frac{\theta_B}{\theta_A + \theta_B}$$
 
-Using Bayes' rule:
+**Numerical Example:**
+If current abundance parameters are $\theta_A = 0.7$ and $\theta_B = 0.3$, an ambiguous read compatible with both contributes $0.7$ fractional expected counts to Transcript A and $0.3$ to Transcript B.
 
-\[
-\boxed{
-z_{ni}
-=
-\frac{
-\theta_i p(r_n\mid i)
-}{
-\sum_{j=1}^{M}
-\theta_j p(r_n\mid j)
-}
-}
-\]
+---
 
-The probability is zero if transcript \(i\) cannot generate the observed read under the model.
+### 4.3 M-step: Update Transcript Abundances
 
-For a read compatible with transcripts A and B, the assignment probabilities depend on both the abundance estimates and the read likelihoods.
+Under the basic mixture model, the updated abundance estimate $\theta_i^{\text{new}}$ is the sum of expected read assignments to transcript $i$ divided by total reads $N$:
 
-If the two transcripts explain the read equally well, then:
+$$\theta_i^{\text{new}} = \frac{1}{N} \sum_{n=1}^{N} z_{ni}$$
 
-\[
-z_{nA}
-=
-\frac{\theta_A}{\theta_A+\theta_B}
-\]
-
-\[
-z_{nB}
-=
-\frac{\theta_B}{\theta_A+\theta_B}
-\]
-
-For example, if the current abundance estimates are:
-
-\[
-\theta_A=0.7,\qquad \theta_B=0.3
-\]
-
-and both transcripts have equal read likelihoods, the read contributes an expected 0.7 to Transcript A and 0.3 to Transcript B.
-
-This is a probabilistic allocation, not a claim that 70% of the individual read physically originated from A.
-
-### 4.3 M-step: Update transcript abundances
-
-Under the simplified mixture model, the updated abundance estimate is the expected number of reads assigned to transcript \(i\), divided by the total number of reads:
-
-\[
-\boxed{
-\theta_i^{\text{new}}
-=
-\frac{1}{N}
-\sum_{n=1}^{N}z_{ni}
-}
-\]
-
-This update maintains the constraint that transcript proportions sum to one.
-
-The E-step and M-step are repeated until the estimates converge.
-
-**A practical qualification:** This simplified update assumes that the transcript-specific read likelihoods are appropriately normalized and that the model parameter represents the probability that a sampled fragment originates from each transcript. Actual RNA-seq quantifiers may parameterize transcript abundance differently and account for effective length and other biases.
+This formulation guarantees that $\sum_{i=1}^{M} \theta_i^{\text{new}} = 1$.
 
 ---
 
 ## 5. Worked Example: Quantifying Four TP53 Isoforms
 
-Suppose an RNA-seq experiment produces 500 reads compatible with the TP53 gene's four transcript isoforms.
+Consider an RNA-seq experiment yielding **500 total reads** compatible with four isoforms of the *TP53* gene.
 
-The initial analysis identifies:
+### Dataset Breakdown
+- **Unique reads:** 200
+- **Ambiguous reads:** 300 (compatible with all four isoforms)
 
-- 200 uniquely compatible reads.
-- 300 ambiguous reads.
+#### Initial Unique Read Distribution
 
-The unique-read evidence is:
-
-| Transcript | Unique reads |
-|---|---:|
-| TP53-A | 80 |
-| TP53-B | 50 |
-| TP53-C | 40 |
-| TP53-D | 30 |
+| Isoform | Unique Reads ($U_i$) |
+| :--- | :---: |
+| **TP53-A** | 80 |
+| **TP53-B** | 50 |
+| **TP53-C** | 40 |
+| **TP53-D** | 30 |
 | **Total** | **200** |
 
-The remaining 300 reads can map to multiple isoforms.
-
-**Important:** Knowing only that 300 reads are ambiguous is not enough to determine their allocation. We also need to know which transcripts each read is compatible with and how likely each transcript is to have generated it.
-
-For a transparent worked example, assume:
-
+#### Simplifying Assumptions for this Example
 1. All four isoforms have equal effective lengths.
-2. The 300 ambiguous reads are equally compatible with all four isoforms.
-3. All compatible transcripts have equal read likelihood for these ambiguous reads.
-4. There are no additional sequence or fragment biases.
+2. All 300 ambiguous reads are equally compatible with all four isoforms ($p(r \mid i)$ is constant).
+3. No sequencing or positional biases exist.
 
-These assumptions make this a simplified example rather than a realistic TP53 quantification model.
+---
 
-### Step 1: Initialize using the unique reads
+### Step 1: Initialization
 
-A simple initialization uses the relative unique-read counts:
+Initialize transcript abundance parameters $\theta^{(0)}$ using the proportion of unique reads:
 
-\[
-\theta_i^{(0)}
-=
-\frac{U_i}{\sum_j U_j}
-\]
+$$\theta_i^{(0)} = \frac{U_i}{\sum_{j} U_j}$$
 
-where \(U_i\) is the number of uniquely compatible reads for transcript \(i\).
+| Isoform | Unique Reads ($U_i$) | Initial Proportion ($\theta_i^{(0)}$) |
+| :--- | :---: | :---: |
+| **TP53-A** | 80 | $80 / 200 = 0.40$ |
+| **TP53-B** | 50 | $50 / 200 = 0.25$ |
+| **TP53-C** | 40 | $40 / 200 = 0.20$ |
+| **TP53-D** | 30 | $30 / 200 = 0.15$ |
 
-The initial estimates are:
+---
 
-| Transcript | Unique reads | Initial proportion |
-|---|---:|---:|
-| TP53-A | 80 | 0.40 |
-| TP53-B | 50 | 0.25 |
-| TP53-C | 40 | 0.20 |
-| TP53-D | 30 | 0.15 |
+### Step 2: E-step — Allocating Ambiguous Reads
 
-These estimates sum to 1.0.
+Calculate expected fractional assignments for the 300 ambiguous reads:
 
-### Step 2: E-step — Allocate ambiguous reads
+$$E[\text{Ambiguous Reads}_i] = 300 \times \theta_i^{(0)}$$
 
-Since every ambiguous read is assumed equally compatible with all four transcripts, the posterior assignment probabilities are proportional to the current abundance estimates.
+| Isoform | $\theta_i^{(0)}$ | Fractional Assignment Calculation | Expected Ambiguous Reads |
+| :--- | :---: | :---: | :---: |
+| **TP53-A** | 0.40 | $300 \times 0.40$ | 120 |
+| **TP53-B** | 0.25 | $300 \times 0.25$ | 75 |
+| **TP53-C** | 0.20 | $300 \times 0.20$ | 60 |
+| **TP53-D** | 0.15 | $300 \times 0.15$ | 45 |
+| **Total** | **1.00** | — | **300** |
 
-For TP53-A:
+---
 
-\[
-P(A\mid r)=0.40
-\]
+### Step 3: M-step — Updating Abundance Estimates
 
-Therefore, the expected number of ambiguous reads assigned to TP53-A is:
+Combine unique read counts with expected ambiguous counts to compute total expected counts and new parameters:
 
-\[
-300\times0.40=120
-\]
+| Isoform | Unique Reads | Expected Ambiguous Reads | Expected Total Count ($C_i$) | Updated Parameter ($\theta_i^{(1)}$) |
+| :--- | :---: | :---: | :---: | :---: |
+| **TP53-A** | 80 | 120 | 200 | $200 / 500 = 0.40$ |
+| **TP53-B** | 50 | 75 | 125 | $125 / 500 = 0.25$ |
+| **TP53-C** | 40 | 60 | 100 | $100 / 500 = 0.20$ |
+| **TP53-D** | 30 | 45 | 75 | $75 / 500 = 0.15$ |
+| **Total** | **200** | **300** | **500** | **1.00** |
 
-Similarly:
+*Note: Because all ambiguous reads had identical multi-mapping compatibility across all isoforms, the proportion converged in one step. In real datasets with complex overlap patterns, multiple iterations are required.*
 
-\[
-300\times0.25=75
-\]
+---
 
-\[
-300\times0.20=60
-\]
+### Step 4: Complexity in Real Data
 
-\[
-300\times0.15=45
-\]
-
-The expected assignments are:
-
-| Transcript | Probability per ambiguous read | Expected ambiguous reads |
-|---|---:|---:|
-| TP53-A | 0.40 | 120 |
-| TP53-B | 0.25 | 75 |
-| TP53-C | 0.20 | 60 |
-| TP53-D | 0.15 | 45 |
-| **Total** | **1.00** | **300** |
-
-Fractional expected counts are valid in probabilistic quantification. They represent expected contributions rather than literal fractions of physical reads.
-
-### Step 3: M-step — Update the abundance estimates
-
-Add the expected ambiguous-read contributions to the unique-read counts.
-
-| Transcript | Unique reads | Expected ambiguous reads | Expected total |
-|---|---:|---:|---:|
-| TP53-A | 80 | 120 | 200 |
-| TP53-B | 50 | 75 | 125 |
-| TP53-C | 40 | 60 | 100 |
-| TP53-D | 30 | 45 | 75 |
-| **Total** | **200** | **300** | **500** |
-
-The updated proportions are:
-
-\[
-\theta_A=\frac{200}{500}=0.40
-\]
-
-\[
-\theta_B=\frac{125}{500}=0.25
-\]
-
-\[
-\theta_C=\frac{100}{500}=0.20
-\]
-
-\[
-\theta_D=\frac{75}{500}=0.15
-\]
-
-In this specially constructed example, the estimates do not change after the first update. All ambiguous reads have the same compatibility pattern, so the relative proportions established by the unique reads remain unchanged.
-
-### Step 4: Why real datasets require iteration
-
-In real RNA-seq data, different reads are compatible with different subsets of transcripts.
-
-For example:
+In realistic datasets, reads group into overlapping compatibility subsets:
 
 ```text
-Read group 1: TP53-A, TP53-B
-Read group 2: TP53-B, TP53-C, TP53-D
-Read group 3: TP53-A, TP53-C
-Read group 4: TP53-A, TP53-B, TP53-C, TP53-D
+Read Group 1: Compatible with {TP53-A, TP53-B}
+Read Group 2: Compatible with {TP53-B, TP53-C, TP53-D}
+Read Group 3: Compatible with {TP53-A, TP53-C}
+Read Group 4: Compatible with {TP53-A, TP53-B, TP53-C, TP53-D}
 ```
 
-The assignment probabilities for each group differ. Updating the abundance estimates changes the relative probabilities, which then changes the next round of assignments.
-
-This feedback between read assignments and abundance estimates is why EM is iterative.
+Updating $\theta$ dynamically shifts assignment fractions across groups, driving multi-step iterative convergence.
 
 ---
 
 ## 6. Transcript Abundance Is Not the Same as Read Count
 
-A key issue in RNA-seq quantification is that longer transcripts can generate more sequencing fragments than shorter transcripts at the same molecule concentration.
+Longer transcript molecules produce more physical RNA-seq fragments than shorter molecules at equal molar concentrations. 
 
-Consequently, raw fragment counts are not directly equivalent to transcript abundance.
+```
+Transcript X (1,000 bp): [========]               --> Generates 10 fragments
+Transcript Y (3,000 bp): [========================] --> Generates 30 fragments
+```
 
-Many quantifiers account for this using an **effective transcript length**, which reflects the number of fragment start positions that can produce observable fragments under the model.
+To account for this, quantification models incorporate **Effective Transcript Length** ($\ell_i^{\text{eff}}$), which represents the number of valid starting positions for fragment generation given fragment size distribution constraints.
 
-A simplified relationship is:
+$$\text{Expected Fragment Count}_i \propto \text{Molar Abundance}_i \times \ell_i^{\text{eff}}$$
 
-\[
-\text{Expected fragment count}_i
-\propto
-\text{Molecule abundance}_i
-\times
-\text{Effective length}_i
-\]
+### Common Quantification Metrics
 
-Effective length can depend on the fragment-length distribution and other modeling assumptions.
+1. **Estimated Counts ($C_i$):** Expected total fragment assignments resulting from the EM algorithm.
+2. **Transcripts Per Million (TPM):** Relative expression measure scaled to sum to $1,000,000$.
+3. **FPKM / RPKM:** Fragments/Reads Per Kilobase of transcript per Million mapped reads (legacy length-normalized metrics).
 
-This is why transcript quantification commonly distinguishes between:
+#### Calculating TPM
 
-- **Estimated counts:** Expected fragment assignments to transcripts.
-- **TPM (Transcripts Per Million):** A length-normalized relative abundance measure scaled to one million.
-- **FPKM/RPKM:** Length- and sequencing-depth-normalized measures, with different conventions for paired-end and single-end data.
+First, compute length-normalized rate $q_i$:
 
-For TPM, a simplified calculation is:
+$$q_i = \frac{C_i}{\ell_i^{\text{eff}}}$$
 
-\[
-q_i=\frac{C_i}{\ell_i^{\mathrm{eff}}}
-\]
+Then scale to sum to $10^6$:
 
-\[
-TPM_i
-=
-10^6
-\frac{q_i}{\sum_j q_j}
-\]
-
-where \(C_i\) is the estimated fragment count and \(\ell_i^{\mathrm{eff}}\) is the effective length.
-
-The exact quantification and normalization procedures vary by tool. Transcript-level TPM estimates are relative abundance measures; they are not direct measurements of absolute transcript molecule counts.
+$$\text{TPM}_i = 10^6 \times \frac{q_i}{\sum_{j=1}^{M} q_j}$$
 
 ---
 
 ## 7. Computational Complexity
 
-Let:
+### Variables
+- $N$ = Total number of reads/fragments
+- $M$ = Number of target transcripts
+- $K$ = Average number of compatible transcripts per read ($K \ll M$)
+- $I$ = Number of EM iterations until convergence
+- $E$ = Number of distinct equivalence classes ($E \ll N$)
 
-- \(N\) = number of reads or fragments.
-- \(M\) = number of candidate transcripts.
-- \(K\) = average number of compatible transcripts per read.
-- \(I\) = number of EM iterations.
-- \(E\) = number of distinct read-compatibility classes, when such classes are used.
+### Time Complexity
+- **Naive Per-Read Approach:** $\mathcal{O}(I \cdot N \cdot K)$
+- **Equivalence Class Approach:** $\mathcal{O}(I \cdot E \cdot K)$
 
-### Time complexity
+### Space Complexity
+- **Naive Storage:** $\mathcal{O}(N \cdot K + M)$
+- **Equivalence Class Storage:** $\mathcal{O}(E \cdot K + M)$
 
-For a straightforward implementation that processes every read and each compatible transcript in every iteration, the cost is approximately:
-
-\[
-\boxed{O(I N K)}
-\]
-
-This assumes the candidate transcript set for each read is already available and that evaluating a read-transcript likelihood is constant-time or has already been computed.
-
-If the likelihood calculations require additional sequence processing, that cost must also be included.
-
-The actual runtime depends on the number of candidate mappings, the number of iterations, the number of transcripts, and the inference strategy.
-
-### Space complexity
-
-A naive implementation that stores every read-to-transcript compatibility can require:
-
-\[
-O(NK+M)
-\]
-
-space, in addition to the input sequences and any alignment or index data.
-
-However, implementations need not store all per-read assignments. Many quantifiers aggregate reads into equivalence classes: groups of reads compatible with the same set of transcripts and sharing the relevant likelihood information.
-
-When the model permits this aggregation, the iterative computation can operate on the much smaller collection of classes rather than on every read independently. Memory use then depends on the number of classes and their transcript memberships, along with other data structures.
-
-### Convergence
-
-EM is typically iterated until the change in likelihood or abundance estimates falls below a threshold, or a maximum iteration limit is reached.
-
-There is no universal requirement that convergence take 50–200 iterations. The number of iterations depends on the data, initialization, model, and stopping criterion.
-
-EM generally improves or maintains the likelihood at each iteration under its assumptions, but convergence does not guarantee that the individual transcript abundances are uniquely identifiable. Transcripts with identical or nearly indistinguishable sequence evidence may remain difficult or impossible to separate reliably.
+### Equivalence Class Optimization
+Modern tools avoid iterating over billions of individual reads by grouping reads with identical compatibility profiles into **Equivalence Classes**. The EM updates are then computed per class rather than per read, reducing runtime by orders of magnitude.
 
 ---
 
 ## 8. EM in Modern RNA-seq Quantification Tools
 
-Several RNA-seq tools use probabilistic models to estimate transcript abundance, but their algorithms are not identical.
-
-| Tool | General approach | Key consideration |
-|---|---|---|
-| RSEM | Probabilistic transcript quantification using an expectation-maximization framework | Models uncertainty in read assignment and transcript abundance |
-| Salmon | Transcript quantification using lightweight mapping and probabilistic inference | Supports bias correction and efficient quantification; inference details depend on configuration |
-| kallisto | Pseudoalignment and transcript quantification using a probabilistic model | Groups reads by transcript compatibility and estimates abundance efficiently |
-| oarfish | Rust-based transcript quantification | Uses efficient transcript-aware quantification methods designed for modern sequencing data |
-
-These tools share the general goal of estimating transcript abundances despite ambiguous read assignments. They differ in mapping or compatibility detection, statistical models, bias correction, and implementation.
-
-It is therefore more accurate to say that these tools use related probabilistic quantification strategies than to assume every tool implements exactly the same EM equations or update procedure.
+| Tool | Mapping Approach | Primary Inference Method | Key Features |
+| :--- | :--- | :--- | :--- |
+| **RSEM** | Full alignment (Bowtie/STAR) | Standard EM / Variational Bayes | Detailed generative probabilistic modeling |
+| **Salmon** | Selective alignment / Lightweight mapping | Online EM / Variational Bayesian EM | High speed, comprehensive sequence bias correction |
+| **kallisto** | Pseudoalignment via $k$-mer DAGs | EM over equivalence classes | Extremely fast, lightweight computational footprint |
+| **oarfish** | Transcript-aware alignment mapping | Expectation-Maximization in Rust | Optimized for modern sequencing technologies (e.g., long-read/short-read handling) |
 
 ---
 
 ## 9. Limitations of EM-Based Transcript Quantification
 
-### Shared exons and indistinguishable isoforms
-
-If two isoforms contain the same observable sequence regions, reads from those regions may not distinguish them. EM can allocate expected counts based on the model, but it cannot create information that the sequencing data do not contain.
-
-### Lowly expressed transcripts
-
-Transcripts with few supporting reads have uncertain abundance estimates. Small changes in the assignment of ambiguous reads may substantially change their estimated proportions.
-
-### Sequencing and mapping biases
-
-GC content, fragment-length distributions, positional biases, sequencing errors, and alignment ambiguity can affect the evidence available to the model. Bias correction helps, but cannot eliminate every source of error.
-
-### Model assumptions
-
-Incorrect transcript annotations or missing isoforms can lead to misleading estimates. If a read originates from a transcript absent from the reference, the quantifier may assign it to an imperfectly matching alternative or leave it unassigned.
-
-### Gene-level versus transcript-level quantification
-
-When several isoforms share exons, estimating total gene expression is often more robust than estimating the abundance of each individual isoform. Transcript-level estimates require sufficient distinguishing evidence.
+1. **Indistinguishable Isoforms:** If two isoforms share identical sequence across all observed reads, EM cannot resolve their individual abundances uniquely.
+2. **Low-Coverage Uncertainty:** Lowly expressed transcripts exhibit high estimator variance; small sample fluctuations drastically alter proportional outcomes.
+3. **Reference Annotation Errors:** Reads originating from unannotated transcripts or genomic contamination will be misallocated to annotated isoforms.
+4. **Complex Biases:** Non-uniform fragment sampling (e.g., $3'$ bias, GC-content bias) requires detailed modeling to prevent systematic quantification errors.
 
 ---
 
 ## 10. Why This Matters in Bioinformatics
 
-EM-based transcript quantification is useful whenever multiple biological sources can explain the same observation.
+EM-based quantification provides critical foundation for downstream genomic analysis:
 
-In RNA-seq, it enables researchers to estimate the relative expression of transcript isoforms even when many reads map ambiguously. These estimates can support analyses of alternative splicing, isoform switching, transcript expression, and gene regulation.
-
-For downstream analysis, the uncertainty in transcript-level estimates should be considered when comparing conditions or interpreting low-abundance isoforms. Differential transcript expression methods and differential transcript usage methods answer related but distinct questions.
-
-EM is not a substitute for experimental evidence. When isoforms cannot be distinguished by the available reads, longer reads, junction-spanning reads, improved transcript annotations, or additional experimental data may be needed.
+- **Differential Isoform Usage:** Detecting alternative splicing switches between disease states and controls.
+- **Gene-Level Summarization:** Aggregating transcript-level TPM estimates yields accurate total gene expression measurements without bias from length variation.
+- **Uncertainty Propagation:** Downstream differential expression tools (e.g., sleuth, Swish, DESeq2) utilize quantification uncertainty to control false discovery rates.
 
 ---
 
 ## Key Takeaways
 
-- EM estimates hidden assignments and model parameters iteratively.
-- In transcript quantification, it assigns probabilistic contributions of ambiguous reads to compatible transcripts.
-- The E-step calculates read assignment probabilities using transcript abundance and read likelihood.
-- The M-step updates abundance estimates from the expected read assignments.
-- Effective transcript length and sequencing biases matter when converting fragment evidence into transcript abundance.
-- A basic implementation has an approximate per-iteration cost of \(O(NK)\) when read compatibility information is already available.
-- Actual tools may aggregate reads into equivalence classes to improve efficiency.
-- EM cannot resolve isoforms that are indistinguishable from the available sequencing evidence.
-- RSEM, Salmon, kallisto, and oarfish use related probabilistic approaches, but their implementation details differ.
+- **Iterative Nature:** EM iteratively estimates unobserved read origins (E-step) and updates transcript relative abundances (M-step).
+- **Probabilistic Allocation:** Ambiguous reads are distributed as fractional expected counts based on current abundance parameter estimates.
+- **Length Normalization:** Fragment counts must be adjusted by effective transcript length ($\ell^{\text{eff}}$) to calculate accurate molar abundances (TPM).
+- **Efficiency via Equivalence Classes:** Modern quantifiers (Salmon, kallisto, RSEM, oarfish) aggregate reads into equivalence classes to perform EM iterations efficiently in memory.
