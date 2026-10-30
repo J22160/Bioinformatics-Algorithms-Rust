@@ -11,7 +11,6 @@
 8. [Efficient Data Structures and Algorithms](#efficient-data-structures-and-algorithms)
 9. [Bioinformatics Problem](#bioinformatics-problem)
 10. [Limitations and Best Practices](#limitations-and-best-practices)
-11. [Connection to Textbook Concepts](#connection-to-textbook-concepts)
 12. [Key Takeaway](#key-takeaway)
 13. [References](#references)
 
