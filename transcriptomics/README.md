@@ -1,7 +1,7 @@
 # Transcriptomics Algorithms
 
 This section covers the algorithms that power the entire RNA-seq
-analysis pipeline — from raw read quantification to identifying
+analysis pipeline  from raw read quantification to identifying
 differentially expressed genes between conditions.
 
 ## Why These Algorithms Matter
